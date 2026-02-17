@@ -84,19 +84,11 @@ export const Agent = {
       }
 
       const data = await fetchCallAlerts(sessionCookie);
+      console.log("data",data.data)
       const activeCalls = data?.data?.new ?? [];
       const changes = data?.data?.changes ?? [];
 
 
-      // const authHeader=process.env.authHeader as string;
-      const authHeader=(req.headers.authorization || process.env.authHeader) as string;
-      const holdingResponse = await axios.get(
-      "https://api.upstox.com/v2/portfolio/long-term-holdings",
-      {
-        headers: { Authorization: authHeader },
-      }
-    );
-    const holdingData=holdingResponse.data.data;
     const currCalls=await Trading80Call.find();
 
     await client.connect();
@@ -105,6 +97,7 @@ export const Agent = {
     
 
     console.log("active calls",activeCalls);
+    console.log("changes",changes)
     
     for (const call of activeCalls){
        let matchedInstrument = await findInstrument(collection, call.sname, "NSE_EQ");
@@ -159,7 +152,6 @@ export const Agent = {
       const instrument_token = matchedInstrument.instrument_key;
       
       const isInCurrCalls=currCalls.find((item)=>item.instrument_token === instrument_token);
-      const isInHoldings=holdingData.find((item:any)=>item.instrument_token === instrument_token);
 
       let tradeStatus;
       console.log("call reason",call.reason,call.sname);
@@ -173,25 +165,7 @@ export const Agent = {
         tradeStatus = "UNKNOWN";
       }
 
-      if(isInHoldings && !isInCurrCalls){ 
-        const normalized = normalizeTrading80Call(call);       
-              await Trading80Call.findOneAndUpdate(
-                { stockId: call.stockid },
-                {
-                  $set: {
-                    ...normalized,
-                    tradeStatus:tradeStatus,
-                    instrument_token,
-                    lastSyncedAt: new Date(),
-                  },
-                },
-                { upsert: true }
-              );
-      }
-      else if(!isInHoldings && isInCurrCalls){
-        await Trading80Call.deleteOne({stockId:call.stockid})
-      }
-      else if(isInCurrCalls && isInHoldings){
+      if(isInCurrCalls){
           await Trading80Call.findOneAndUpdate(
                 { stockId: call.stockid },
                 {
@@ -200,7 +174,22 @@ export const Agent = {
                     instrument_token,
                     lastSyncedAt: new Date(),
                   },
-                }              );
+                }
+              );
+      } else {
+        const normalized = normalizeTrading80Call(call);
+        await Trading80Call.findOneAndUpdate(
+          { stockId: call.stockid },
+          {
+            $set: {
+              ...normalized,
+              tradeStatus:tradeStatus,
+              instrument_token,
+              lastSyncedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
       }
     
   }
